@@ -1,0 +1,132 @@
+import subprocess
+import commands
+import os
+import sys
+import time
+import random
+import signal
+import shlex
+import numpy as np
+import discretize
+
+ROOT_PATH = "/Users/liwen/work/queryopt/"
+PGDATA_PATH = "pgdata/"
+RAWDATA_PATH = "data/census/"
+
+POSTGRES_BIN_PATH = "/Library/PostgreSQL/9.2/bin/"
+
+DB_SCHEMA = "(caseid varchar(255), dAge varchar(255), dAncstry1 varchar(255), \
+          dAncstry2 varchar(255), iAvail varchar(255), iCitizen varchar(255), \
+          iClass varchar(255), dDepart varchar(255), iDisabl1 varchar(255), \
+          iDisabl2 varchar(255), iEnglish varchar(255), iFeb55 varchar(255), \
+          iFertil varchar(255), dHispanic varchar(255), dHour89 varchar(255), \
+          dHours varchar(255), iImmigr varchar(255), dIncome1 varchar(255), \
+          dIncome2 varchar(255), dIncome3 varchar(255), dIncome4 varchar(255), \
+          dIncome5 varchar(255), dIncome6 varchar(255), dIncome7 varchar(255), \
+          dIncome8 varchar(255), dIndustry varchar(255), iKorean varchar(255), \
+          iLang1 varchar(255), iLooking varchar(255), iMarital varchar(255), \
+          iMay75880 varchar(255), iMeans varchar(255), iMilitary varchar(255), \
+          iMobility varchar(255), iMobillim varchar(255), dOccup varchar(255), \
+          iOthrserv varchar(255), iPerscare varchar(255), dPOB varchar(255), \
+          dPoverty varchar(255), dPwgt1 varchar(255), iRagechld varchar(255), \
+          dRearning varchar(255), iRelat1 varchar(255), iRelat2 varchar(255), \
+          iRemplpar varchar(255), iRiders varchar(255), iRlabor varchar(255), \
+          iRownchld varchar(255), dRpincome varchar(255), iRPOB varchar(255), \
+          iRrelchld varchar(255), iRspouse varchar(255), iRvetserv varchar(255), \
+          iSchool varchar(255), iSept80 varchar(255), iSex varchar(255), \
+          iSubfam1 varchar(255), iSubfam2 varchar(255), iTmpabsnt varchar(255), \
+          dTravtime varchar(255), iVietnam varchar(255), dWeek89 varchar(255), \
+          iWork89 varchar(255), iWorklwk varchar(255), iWWII varchar(255), \
+          iYearsch varchar(255), iYearwrk varchar(255), dYrsserv varchar(255), class varchar(255))"
+
+# look at a raw data file with class labels
+# create a database for this file, and
+# load each class as a separate table
+def create_db(file_name):
+  # split this big into separate files
+  fname = ROOT_PATH + RAWDATA_PATH + file_name
+  [header, data] = discretize.load_file(fname)
+
+  labels = list(set(data[:,-1]))
+
+  data_dir = file_name + ".splits"
+  print data_dir
+  if os.path.exists(data_dir):
+    print "seems the directory: %s exists already..." % data_dir
+    print "skipping this step"
+
+  else:
+    os.mkdir(data_dir)
+    for x in labels:
+      subset = np.array(list(list(y) for y in data if y[-1] == x))
+      fw = open(data_dir + "/" + file_name + "_" + str(x), 'w')
+      for row in subset:
+        if len(row) != len(DB_SCHEMA.split(",")):
+          print "whatttttttttttttttt!"
+        fw.write(','.join(row) + '\n')
+      fw.close()
+
+  # load each file into db as a table
+  dbname = file_name
+  print POSTGRES_BIN_PATH + "psql"
+  psql_proc = subprocess.Popen([POSTGRES_BIN_PATH+"psql", "-p 11111", "postgres"], 
+      stdin=subprocess.PIPE, 
+      stdout=subprocess.PIPE,
+      universal_newlines=True)
+
+  send_cmd_to_proc(psql_proc, "DROP DATABASE IF EXISTS %s;" % dbname)
+  send_cmd_to_proc(psql_proc, "CREATE DATABASE %s;" % dbname)
+  send_cmd_to_proc(psql_proc, "\connect %s;" % dbname)
+
+  tables = os.listdir(data_dir)
+  for data_file in tables:
+    send_cmd_to_proc(psql_proc, "DROP TABLE IF EXISTS %s;" % data_file)
+    send_cmd_to_proc(psql_proc, "CREATE TABLE %s %s;" % (data_file, DB_SCHEMA))
+    send_cmd_to_proc(psql_proc, "COPY %s FROM '%s' WITH (FORMAT CSV);" % 
+        (data_file, ROOT_PATH + RAWDATA_PATH + data_dir + "/" + data_file))
+
+  run_selection_queries(header, data, tables, [25,31,66], 5)
+  send_cmd_to_proc(psql_proc, "\q")
+
+  return [header, data]
+
+def run_selection_queries(header, data, tables, cols, num_query):
+  for table in tables:
+    run_selection_queries_single_table(header, data, table, cols, num_query)
+
+def run_selection_queries_single_table(header, data, table_name, cols, num_query):
+  psql_proc = subprocess.Popen([POSTGRES_BIN_PATH+"psql", "-p 11111", "postgres"], 
+      stdin=subprocess.PIPE, 
+      stdout=subprocess.PIPE,
+      universal_newlines=True)
+
+  values = {}
+  for col in cols:
+    values[col] = random.sample(xrange(len(data[:,col])), num_query)
+    print values[col]
+  for i in xrange(num_query):
+    query = "SELECT * FROM %s WHERE" % table_name
+    for j, col in enumerate(cols):
+      if j > 0:
+        query += " AND "
+      query += " %s = %s" % (header[col], data[values[col][i]][col])
+    query += ';'
+    print query
+    send_cmd_to_proc(psql_proc, query)
+
+#sends something to a subprocess' stdin
+def send_cmd_to_proc(proc, command):
+   print command
+   proc.stdin.write(command + '\n')
+   # XXX: this is pretty horribile
+   #out = proc.stdout.readline()
+   #print out
+
+def run_it():
+  [header, data] = create_db(sys.argv[1])
+
+def main():
+  data = create_db(sys.argv[1])
+
+if __name__ == '__main__':
+  main()

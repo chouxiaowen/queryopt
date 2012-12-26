@@ -1,0 +1,4 @@
+time clustering.py ../data/census/census1990 2 c_4_col_5
+time clustering.py ../data/census/census1990 3 c_4_col_5
+time clustering.py ../data/census/census1990 4 c_4_col_5
+time clustering.py ../data/census/census1990 5 c_4_col_5
