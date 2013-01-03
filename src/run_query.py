@@ -13,7 +13,7 @@ import psycopg2
 import math
 import string
 
-ROOT_PATH = "/Users/liwen/work/queryopt/"
+ROOT_PATH = "/home/ubuntu/queryopt/"
 PGDATA_PATH = "pgdata/"
 RAWDATA_PATH = "data/census/"
 
@@ -21,7 +21,6 @@ POSTGRES_BIN_PATH = "/Library/PostgreSQL/9.2/bin/"
 
 query_cols = []
 join_cols = []
-
 
 DB_SCHEMA = "(caseid varchar(255), dAge varchar(255), dAncstry1 varchar(255), \
           dAncstry2 varchar(255), iAvail varchar(255), iCitizen varchar(255), \
@@ -98,6 +97,7 @@ def connect_to_db():
 # load each class as a separate table
 def create_db(file_name, force_split):
   # split this big into separate files
+  print 'populating data to db'
   fname = ROOT_PATH + RAWDATA_PATH + file_name
   [header, data] = discretize.load_file(fname)
 
@@ -218,6 +218,7 @@ def create_indexes(header, dbname, tables, cols):
     create_indexes_single_table(header, dbname, table, cols)
 
 def create_indexes_single_table(header, dbname, table, cols):
+  print 'creating indexes for %s' % table
   conn = psycopg2.connect("dbname=%s port=11111" % dbname)
   conn.set_isolation_level(0)
   cur = conn.cursor()
@@ -250,7 +251,7 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
   conn.set_isolation_level(0)
   cur = conn.cursor()
 
-  cur.execute("set statement_timeout to '5min';")
+#  cur.execute("set statement_timeout to '5min';")
 
   line_no = -1
   total_time = []
@@ -266,8 +267,8 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
     queries = []
     for table_name in tables:
       query = "SELECT count(*) FROM %s WHERE" % table_name
- #    q_cols = query_cols[line_no]
-      q_cols = [25,31]
+      q_cols = query_cols[line_no]
+#     q_cols = [25,31]
 
       for j, col in enumerate(q_cols):
         if j > 0:
@@ -275,23 +276,6 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
         query += " %s = '%s'" % (header[int(col)], qrow[int(col)])
       query += ';'
       queries.append(query)
-   # print queries
-
-#    queries = []
-#    for t1 in tables:
-#      for t2 in tables:
-#        query = "SELECT count(*) FROM %s t1, %s t2 WHERE t1.%s = t2.%s AND " % (t1, 
-#            t2, header[int(join_cols[line_no])], header[int(join_cols[line_no])])
-#
-#        q_cols = query_cols[line_no]
-#        for j, col in enumerate(q_cols):
-#          if j > 0:
-#            query += " AND "
-#          query += " t%d.%s = '%s'" % (j+1, header[int(col)], qrow[int(col)])
-#        query += ';'
-#        queries.append(query)
-#   print queries
-    #print line_no
 
     actuals = []
     estimates = []
@@ -303,7 +287,11 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
       elapses.append(time() - start)
 
       # Selectivity estiamtion
-      actual = int(cur.fetchone()[0])
+      tup = cur.fetchone()
+      if not tup:
+        actual = 0
+      else:
+        actual = int(tup[0])
       actuals.append(actual)
       
       cur.execute("explain " + string.replace(query, 'count(*)', '*'))
@@ -328,11 +316,12 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
 
 def run_it():
   get_query_cols('query_cols')
-  get_join_cols('join_cols')
-#  [header, data, dbname, tables] = create_db(sys.argv[1], int(sys.argv[3]))
+#  get_join_cols('join_cols')
+  
+  if sys.argv[4] == 'create':
+    [header, data, dbname, tables] = create_db(sys.argv[1], int(sys.argv[3]))
   header = discretize.get_header("header")
   cols = [16, 25, 31, 50, 66]
-
 
   force_split = int(sys.argv[3])
   file_name = sys.argv[1]
@@ -341,16 +330,12 @@ def run_it():
 
   tables = os.listdir(data_dir)
 
-#  create_indexes(header, file_name + force_name, tables, cols)
+  if sys.argv[4] == 'create':
+    create_indexes(header, file_name + force_name, tables, cols)
+ 
   query_file = sys.argv[2]
-
-#  query_file = "query_key_100"
   run_selection_queries(header, file_name + force_name, tables, cols, 
       query_file, file_name + force_name + "_" + query_file)
-
-#  query_file = "query_row_100"
-#  run_selection_queries(header, file_name + force_name, tables, cols, 
-#      query_file, sys.argv[1] + "_" + query_file)
 
 def gen_query():
   [header, data] = discretize.load_file(sys.argv[1])

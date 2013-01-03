@@ -1,4 +1,4 @@
-#!/usr/local/homebrew/bin/python2.5
+#!/usr/local/homebrew/bin/python2.6
 import mixture as mx
 import sys
 import numpy as np
