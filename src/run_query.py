@@ -3,7 +3,7 @@ import subprocess
 import commands
 import os
 import sys
-from time import time
+from time import time, sleep
 import random
 import signal
 import shlex
@@ -13,10 +13,13 @@ import psycopg2
 import math
 import string
 
-ROOT_PATH = "/home/ubuntu/queryopt/"
-PGDATA_PATH = "pgdata/"
-RAWDATA_PATH = "data/census/"
+#ROOT_PATH = "/home/ubuntu/queryopt/"
+#PGDATA_PATH = "pgdata/"
+#RAWDATA_PATH = "data/census/"
 
+ROOT_PATH = "/Users/liwen/work/queryopt/"
+PGDATA_PATH = ROOT_PATH+"pgdata/"
+RAWDATA_PATH = "data/census/"
 POSTGRES_BIN_PATH = "/Library/PostgreSQL/9.2/bin/"
 
 query_cols = []
@@ -71,6 +74,19 @@ def gen_join_cols(cols):
 
     print join_cols[-1][0]
 
+def execute_or_die(command):
+   if not execute_status(command):
+      exit()
+
+def execute_status(command):
+   print command
+   status, output = commands.getstatusoutput(command)
+   if status != 0:
+      print " ===== FATAL: " + command + " FAILED.  Output: ====="
+      print output
+      return False
+   return True
+
 def connect_to_db():
 # Connect to an existing database
   conn = psycopg2.connect("dbname=postgres port=11111")
@@ -92,9 +108,9 @@ def connect_to_db():
   cur.close()
   conn.close()
 
-# look at a raw data file with class labels
+# Given a raw data file with class labels
 # create a database for this file, and
-# load each class as a separate table
+# load each class as a separate partition
 def create_db(file_name, force_split):
   # split this big into separate files
   print 'populating data to db'
@@ -166,6 +182,98 @@ def create_db(file_name, force_split):
 
   return [header, data, dbname, tables]
 
+# Given a raw data file with class labels
+# create a database for this file, and
+# load each class as a separate partition
+def create_partitioned_db(file_name, force_split):
+  # split this big into separate files
+  print 'populating data to db'
+  fname = ROOT_PATH + RAWDATA_PATH + file_name
+  [header, data] = discretize.load_file(fname)
+
+  labels = list(set(data[:,-1]))
+  force_name = ("_sp_" + str(force_split)) if force_split > 0 else ""
+  data_dir = file_name + force_name + ".splits"
+  print data_dir
+  if os.path.exists(data_dir):
+    print "seems the directory: %s exists already..." % data_dir
+    print "skipping this step"
+
+  else:
+    os.mkdir(data_dir)
+
+    if force_split > 0:
+      interval = int(math.ceil(data.shape[0] * 1.0 / force_split))
+      for i in range(force_split):
+        subset = np.array(data[i*interval:min((i+1)*interval, data.shape[0]), :])
+        print subset.shape
+        fw = open(data_dir + "/" + file_name + "_" + str(i), 'w')
+        for row in subset:
+          if len(row) != len(DB_SCHEMA.split(",")):
+            print "unmatched length!"
+          fw.write(','.join(row) + '\n')
+        fw.close()
+
+    else:
+      for x in labels:
+        subset = np.array(list(list(y) for y in data if y[-1] == x))
+        fw = open(data_dir + "/" + file_name + "_" + str(x), 'w')
+        for row in subset:
+          if len(row) != len(DB_SCHEMA.split(",")):
+            print "unmatched length!"
+          fw.write(','.join(row) + '\n')
+        fw.close()
+
+  # load each file into db as a table
+  dbname = file_name + force_name 
+
+  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):         
+    print "databaes failed to start..."
+    sys.exit(1)
+
+  
+  sleep(2)
+
+  conn = psycopg2.connect("dbname=postgres port=11111")
+  conn.set_isolation_level(0)
+
+# psql_proc = subprocess.Popen([POSTGRES_BIN_PATH+"psql", "-p 11111", "postgres"], 
+#      stdin=subprocess.PIPE, 
+#      stdout=subprocess.PIPE,
+#      universal_newlines=True)
+
+  cur = conn.cursor()
+  cur.execute("DROP DATABASE IF EXISTS %s;" % dbname)
+  cur.execute("CREATE DATABASE %s;" % dbname)
+  cur.close()
+  conn.close()
+
+  conn = psycopg2.connect("dbname=%s port=11111" % dbname)
+  conn.set_isolation_level(0)
+  cur = conn.cursor()
+  tables = os.listdir(data_dir)
+
+  # create master table
+  master_table = dbname
+  cur.execute("DROP TABLE IF EXISTS %s;" % master_table)
+  cur.execute("CREATE TABLE %s %s;" % (master_table, DB_SCHEMA))
+
+
+  for data_file in tables:
+    cur.execute("DROP TABLE IF EXISTS %s;" % data_file)
+    cur.execute("CREATE TABLE %s () INHERITS (%s);" % (data_file,  master_table))
+    cur.execute("COPY %s FROM '%s' WITH (FORMAT CSV);" %
+        (data_file, ROOT_PATH + RAWDATA_PATH + data_dir + "/" + data_file))
+
+  cur.close()
+  conn.close()
+
+  if not execute_status('pg_ctl stop -D %s' % PGDATA_PATH):         
+    print "databaes failed to stop..."
+    sys.exit(1)
+
+  return [header, data, dbname, tables]
+
 def gen_queries_uniform_row(data, query_file, num_query):
   if os.path.exists(query_file):
     print "file %s exists! Aborted. " % query_file
@@ -219,10 +327,18 @@ def create_indexes(header, dbname, tables, cols):
 
 def create_indexes_single_table(header, dbname, table, cols):
   print 'creating indexes for %s' % table
+  
+  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):         
+    print "databaes failed to start..."
+    sys.exit(1)
+
+  sleep(2)
+
   conn = psycopg2.connect("dbname=%s port=11111" % dbname)
   conn.set_isolation_level(0)
   cur = conn.cursor()
 
+  
   for col in cols:
     cur.execute("DROP INDEX IF EXISTS %s" % (table + str(col)))
     cur.execute("CREATE INDEX %s ON %s (%s)" % (table + str(col), table, header[col]))
@@ -233,6 +349,56 @@ def create_indexes_single_table(header, dbname, table, cols):
 
   cur.close()
   conn.close()
+
+  if not execute_status('pg_ctl stop -D ' + PGDATA_PATH):
+    print "database failed to stop..."
+    sys.exit(1)
+
+
+
+def run_queries(queries):
+  if not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
+    print "failed to clear cache"
+    sys.exit(1)
+
+  if not execute_status('postgres -p 11111 -D ' + PGDATA_PATH +  ' -l pg.log'):          
+    print "databaes failed to start..."
+    sys.exit(1)
+
+  conn = psycopg2.connect("dbname=%s port=11111" % dbname)
+  conn.set_isolation_level(0)
+  cur = conn.cursor()
+
+  elapsed_times = []
+
+  for query in queries:
+    print query
+    start = time()
+    cur.execute(query)
+    elapsed = time() - start
+    elapsed_times.append(elapsed)
+# Selectivity estiamtion
+#  tup = cur.fetchone()
+#  if not tup:
+#    actual = 0
+#  else:
+#    actual = int(tup[0])
+#    actuals.append(actual)
+      
+#  cur.execute("explain " + string.replace(query, 'count(*)', '*'))
+  #  cur.execute("explain " + query)
+#  plan = cur.fetchone()[0].split()
+#  estimate = int(list(x for x in plan if "rows=" in x)[0].split("=")[1])
+#  estimates.append(estimate)
+
+  cur.close()
+  conn.close()
+  
+  if not execute_status('pg_ctl stop -D ' + PGDATA_PATH):
+    print "database failed to stop..."
+    sys.exit(1)
+
+  return elapsed_times
 
 def run_selection_queries(header, dbname, tables, cols, query_file, perform_file):
   global query_cols
@@ -247,9 +413,9 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
 
   fperf = open(perform_file, 'w')
 
-  conn = psycopg2.connect("dbname=%s port=11111" % dbname)
-  conn.set_isolation_level(0)
-  cur = conn.cursor()
+#  conn = psycopg2.connect("dbname=%s port=11111" % dbname)
+#  conn.set_isolation_level(0)
+#  cur = conn.cursor()
 
 #  cur.execute("set statement_timeout to '5min';")
 
@@ -276,50 +442,56 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
         query += " %s = '%s'" % (header[int(col)], qrow[int(col)])
       query += ';'
       queries.append(query)
-
-    actuals = []
-    estimates = []
-    elapses = []
-    for query in queries:
-      print query
-      start = time()
-      cur.execute(query)
-      elapses.append(time() - start)
-
-      # Selectivity estiamtion
-      tup = cur.fetchone()
-      if not tup:
-        actual = 0
-      else:
-        actual = int(tup[0])
-      actuals.append(actual)
-      
-      cur.execute("explain " + string.replace(query, 'count(*)', '*'))
-    #  cur.execute("explain " + query)
-      plan = cur.fetchone()[0].split()
-      estimate = int(list(x for x in plan if "rows=" in x)[0].split("=")[1])
-      estimates.append(estimate)
-
-    total_diffs.append(math.fabs(sum(actuals)-sum(estimates)) * 1.0 / max(sum(actuals), sum(estimates)))
-
-    total_time.append(sum(elapses))
-
-    fperf.write('%.4f' % sum(elapses) + '\t' + 
-        '\t'.join('%.4f' % x for x in elapses) + '\n')
-
-  print ""
+   
+  run_queries(queries)
   print "%s\ttime\t%f" % (dbname, sum(total_time) * 1.0 / len(total_time))
-  print "%s\testimate\t%f" %(dbname, sum(total_diffs) *1.0 / len(total_diffs))
+  return 
 
+# unused code below
+#    actuals = []
+#    estimates = []
+#    elapses = []
+#    for query in queries:
+#      print query
+#      start = time()
+#      cur.execute(query)
+#      elapses.append(time() - start)
+#
+#      # Selectivity estiamtion
+#      tup = cur.fetchone()
+#      if not tup:
+#        actual = 0
+#      else:
+#        actual = int(tup[0])
+#      actuals.append(actual)
+#      
+#      cur.execute("explain " + string.replace(query, 'count(*)', '*'))
+#    #  cur.execute("explain " + query)
+#      plan = cur.fetchone()[0].split()
+#      estimate = int(list(x for x in plan if "rows=" in x)[0].split("=")[1])
+#      estimates.append(estimate)
+#
+#    total_diffs.append(math.fabs(sum(actuals)-sum(estimates)) * 1.0 / max(sum(actuals), sum(estimates)))
+#
+#    total_time.append(sum(elapses))
+#
+#    fperf.write('%.4f' % sum(elapses) + '\t' + 
+#        '\t'.join('%.4f' % x for x in elapses) + '\n')
+#
+#  print ""
+#  print "%s\ttime\t%f" % (dbname, sum(total_time) * 1.0 / len(total_time))
+#  print "%s\testimate\t%f" %(dbname, sum(total_diffs) *1.0 / len(total_diffs))
+#
   f.close()
   fperf.close()
 
 def run_it():
   get_query_cols('query_cols')
 #  get_join_cols('join_cols')
-  
+ 
   if sys.argv[4] == 'create':
-    [header, data, dbname, tables] = create_db(sys.argv[1], int(sys.argv[3]))
+#  [header, data, dbname, tables] = create_db(sys.argv[1], int(sys.argv[3]))
+    [header, data, dbname, tables] = create_partitioned_db(sys.argv[1], int(sys.argv[3]))
   header = discretize.get_header("header")
   cols = [16, 25, 31, 50, 66]
 
