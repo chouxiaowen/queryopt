@@ -13,11 +13,10 @@ import psycopg2
 import math
 import string
 
-#ROOT_PATH = "/home/ubuntu/queryopt/"
-#PGDATA_PATH = "pgdata/"
-#RAWDATA_PATH = "data/census/"
+# linux machine
+ROOT_PATH = "/home/ubuntu/queryopt/"
 
-ROOT_PATH = "/Users/liwen/work/queryopt/"
+#ROOT_PATH = "/Users/liwen/work/queryopt/"
 PGDATA_PATH = ROOT_PATH+"pgdata/"
 RAWDATA_PATH = "data/census/"
 POSTGRES_BIN_PATH = "/Library/PostgreSQL/9.2/bin/"
@@ -81,6 +80,7 @@ def execute_or_die(command):
 def execute_status(command):
    print command
    status, output = commands.getstatusoutput(command)
+   sleep(2)
    if status != 0:
       print " ===== FATAL: " + command + " FAILED.  Output: ====="
       print output
@@ -215,10 +215,16 @@ def create_partitioned_db(file_name, force_split):
         fw.close()
 
     else:
+      print 'partition based on labels'
       for x in labels:
-        subset = np.array(list(list(y) for y in data if y[-1] == x))
+        print 'creating partition %s' % x
+       # subset = np.array(list(list(y) for y in data if y[-1] == x))
+        print 'created subset'
         fw = open(data_dir + "/" + file_name + "_" + str(x), 'w')
-        for row in subset:
+        print 'opened file'
+        for row in data:
+          if row[-1] != x:
+            continue
           if len(row) != len(DB_SCHEMA.split(",")):
             print "unmatched length!"
           fw.write(','.join(row) + '\n')
@@ -230,8 +236,7 @@ def create_partitioned_db(file_name, force_split):
   if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):         
     print "databaes failed to start..."
     sys.exit(1)
-
-  
+ 
   sleep(2)
 
   conn = psycopg2.connect("dbname=postgres port=11111")
@@ -257,7 +262,6 @@ def create_partitioned_db(file_name, force_split):
   master_table = dbname
   cur.execute("DROP TABLE IF EXISTS %s;" % master_table)
   cur.execute("CREATE TABLE %s %s;" % (master_table, DB_SCHEMA))
-
 
   for data_file in tables:
     cur.execute("DROP TABLE IF EXISTS %s;" % data_file)
@@ -354,14 +358,12 @@ def create_indexes_single_table(header, dbname, table, cols):
     print "database failed to stop..."
     sys.exit(1)
 
-
-
-def run_queries(queries):
+def run_query(dbname, query):
   if not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
     print "failed to clear cache"
     sys.exit(1)
 
-  if not execute_status('postgres -p 11111 -D ' + PGDATA_PATH +  ' -l pg.log'):          
+  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
     print "databaes failed to start..."
     sys.exit(1)
 
@@ -369,14 +371,12 @@ def run_queries(queries):
   conn.set_isolation_level(0)
   cur = conn.cursor()
 
-  elapsed_times = []
-
-  for query in queries:
-    print query
-    start = time()
-    cur.execute(query)
-    elapsed = time() - start
-    elapsed_times.append(elapsed)
+ # for query in queries:
+ #   print query
+  print query
+  start = time()
+  cur.execute(query)
+  elapsed = time() - start
 # Selectivity estiamtion
 #  tup = cur.fetchone()
 #  if not tup:
@@ -398,9 +398,9 @@ def run_queries(queries):
     print "database failed to stop..."
     sys.exit(1)
 
-  return elapsed_times
+  return elapsed
 
-def run_selection_queries(header, dbname, tables, cols, query_file, perform_file):
+def run_selection_queries(header, dbname, table, cols, query_file, perform_file):
   global query_cols
 
   f = open(query_file, 'r')
@@ -420,8 +420,7 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
 #  cur.execute("set statement_timeout to '5min';")
 
   line_no = -1
-  total_time = []
-  total_diffs = []
+  total_times = []
   for line in f:
     if line[0] == '#':
       print "skipped this query"
@@ -430,21 +429,21 @@ def run_selection_queries(header, dbname, tables, cols, query_file, perform_file
     qrow = line.strip().split(',')
     line_no += 1
 
-    queries = []
-    for table_name in tables:
-      query = "SELECT count(*) FROM %s WHERE" % table_name
-      q_cols = query_cols[line_no]
+ #   queries = []
+ #   for table_name in tables:
+    query = "SELECT count(*) FROM %s WHERE" % dbname
+    q_cols = query_cols[line_no]
 #     q_cols = [25,31]
 
-      for j, col in enumerate(q_cols):
-        if j > 0:
-          query += " AND "
-        query += " %s = '%s'" % (header[int(col)], qrow[int(col)])
-      query += ';'
-      queries.append(query)
-   
-  run_queries(queries)
-  print "%s\ttime\t%f" % (dbname, sum(total_time) * 1.0 / len(total_time))
+    for j, col in enumerate(q_cols):
+      if j > 0:
+        query += " AND "
+      query += " %s = '%s'" % (header[int(col)], qrow[int(col)])
+    query += ';'
+  
+    elapsed = run_query(dbname,  query)
+    total_times.append(elapsed)
+  print "%s\ttime\t%f" % (dbname, sum(total_times) * 1.0 / len(total_times))
   return 
 
 # unused code below
