@@ -12,11 +12,10 @@ import discretize
 import psycopg2
 import math
 import string
+import platform
 
 # linux machine
-ROOT_PATH = "/home/ubuntu/queryopt/"
-
-#ROOT_PATH = "/Users/liwen/work/queryopt/"
+ROOT_PATH = "/home/ubuntu/queryopt/" if platform.system() == 'Linux' else "/Users/liwen/work/queryopt/"
 PGDATA_PATH = ROOT_PATH+"pgdata/"
 RAWDATA_PATH = "data/census/"
 POSTGRES_BIN_PATH = "/Library/PostgreSQL/9.2/bin/"
@@ -94,7 +93,7 @@ def connect_to_db():
   cur = conn.cursor()
   cur.execute("CREATE TABLE test (id serial PRIMARY KEY, num integer, data varchar);")
 # Pass data to fill a query placeholders and let Psycopg perform
-# the correct conversion (no more SQL injections!)
+# the correct conversion (no more SQL injections)
   cur.execute("INSERT INTO test (num, data) VALUES (%s, %s)", (100, "abc'def"))
 
 # Query the database and obtain data as Python objects
@@ -358,14 +357,14 @@ def create_indexes_single_table(header, dbname, table, cols):
     print "database failed to stop..."
     sys.exit(1)
 
-def run_query(dbname, query):
-  if not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
+def run_query(dbname, query): 
+  if platform.system() == 'Linux' and not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
     print "failed to clear cache"
     sys.exit(1)
 
-  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
-    print "databaes failed to start..."
-    sys.exit(1)
+#  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
+#    print "databaes failed to start..."
+#    sys.exit(1)
 
   conn = psycopg2.connect("dbname=%s port=11111" % dbname)
   conn.set_isolation_level(0)
@@ -377,39 +376,38 @@ def run_query(dbname, query):
   start = time()
   cur.execute(query)
   elapsed = time() - start
-# Selectivity estiamtion
-#  tup = cur.fetchone()
-#  if not tup:
-#    actual = 0
-#  else:
-#    actual = int(tup[0])
-#    actuals.append(actual)
+
+  # Selectivity estiamtion
+  actual = 0
+  tup = cur.fetchone()
+  if not tup:
+    actual = 0
+  else:
+    actual = int(tup[0])
       
-#  cur.execute("explain " + string.replace(query, 'count(*)', '*'))
-  #  cur.execute("explain " + query)
-#  plan = cur.fetchone()[0].split()
-#  estimate = int(list(x for x in plan if "rows=" in x)[0].split("=")[1])
-#  estimates.append(estimate)
+  cur.execute("explain " + string.replace(query, 'count(*)', '*'))
+  plan = cur.fetchone()[0].split()
+  estimate = int(list(x for x in plan if "rows=" in x)[0].split("=")[1])
 
   cur.close()
   conn.close()
   
-  if not execute_status('pg_ctl stop -D ' + PGDATA_PATH):
-    print "database failed to stop..."
-    sys.exit(1)
+#  if not execute_status('pg_ctl stop -D ' + PGDATA_PATH):
+#    print "database failed to stop..."
+#    sys.exit(1)
 
-  return elapsed
+  return [elapsed, actual, estimate]
 
 def run_selection_queries(header, dbname, table, cols, query_file, perform_file):
   global query_cols
 
   f = open(query_file, 'r')
 
-  perform_file = perform_file + "_perform"
-  print perform_file
-  if os.path.exists(perform_file):
-    print "file-to-write: %s exists! aborted!" % perform_file
-    return
+#  perform_file = perform_file + "_perform"
+#  print perform_file
+#  if os.path.exists(perform_file):
+#    print "file-to-write: %s exists! aborted!" % perform_file
+#    return
 
   fperf = open(perform_file, 'w')
 
@@ -421,6 +419,7 @@ def run_selection_queries(header, dbname, table, cols, query_file, perform_file)
 
   line_no = -1
   total_times = []
+  total_diffs = []
   for line in f:
     if line[0] == '#':
       print "skipped this query"
@@ -441,9 +440,13 @@ def run_selection_queries(header, dbname, table, cols, query_file, perform_file)
       query += " %s = '%s'" % (header[int(col)], qrow[int(col)])
     query += ';'
   
-    elapsed = run_query(dbname,  query)
+    [elapsed, actual, estimate] = run_query(dbname,  query)
+    
     total_times.append(elapsed)
+    total_diffs.append(abs(actual-estimate))
+
   print "%s\ttime\t%f" % (dbname, sum(total_times) * 1.0 / len(total_times))
+  print "%s\terror\t%f" % (dbname, sum(total_diffs) * 1.0 / len(total_diffs))
   return 
 
 # unused code below
