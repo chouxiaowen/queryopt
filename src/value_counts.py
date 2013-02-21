@@ -7,7 +7,7 @@ all_values = {}
 def meta_count(file_path):
   if os.path.isdir(file_path):
     for f in os.listdir(file_path):
-      count_values(f)
+      meta_count(f)
   else:
     count_values(file_path)
 
@@ -58,16 +58,7 @@ def run_stats():
   for idx, field in enumerate(header):
     dict_header[field[0]] = idx
 
-#  output_histogram(dict_header['connectiontype'])
-  print 'conntype'
-  output_histogram(dict_header['conntype'])
-  print 'isp'
-  output_histogram(dict_header['isp'])
-  print 'city'
-  output_histogram(dict_header['city'])
-
-#  print dict_header['joinTimeMs']
-#  print dict_header['playTimeMs']
+  output_all_distinct_count()
 
 def main():
   run_stats()
