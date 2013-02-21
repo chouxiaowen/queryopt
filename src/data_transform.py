@@ -145,9 +145,6 @@ class DataTransformer:
       in_d = self.concat_path([self.input_dir, d], True)
       out_d = self.concat_path([self.output_dir, d], False)
 
-      if d != 'Idaho':
-        continue
-
       if not os.path.isdir(in_d):
         continue
       if not os.path.isdir(out_d):
@@ -197,7 +194,7 @@ class DataTransformer:
     fr.close()
     fw.close()
 
-    self.validate_file(out_file, data_dict)
+ #   self.validate_file(out_file, data_dict)
 
   def validate_file(self, data_file, data_dict):
     print 'validating file: %s' % data_file

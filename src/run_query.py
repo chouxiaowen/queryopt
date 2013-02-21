@@ -358,9 +358,9 @@ def create_indexes_single_table(header, dbname, table, cols):
     sys.exit(1)
 
 def run_query(dbname, query): 
-  if platform.system() == 'Linux' and not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
-    print "failed to clear cache"
-    sys.exit(1)
+#  if platform.system() == 'Linux' and not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
+#    print "failed to clear cache"
+#    sys.exit(1)
 
 #  if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
 #    print "databaes failed to start..."
