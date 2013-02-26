@@ -1,5 +1,6 @@
 import sys
 import math
+import os
 import numpy as np
 
 schema = []
@@ -12,7 +13,7 @@ def get_header(filename):
   return list(x.split()[0] for x in header.split(','))
   
 # load a header-less tsv file into a numpy matrix
-def load_file(filename, cols = None, sample_ratio = None):
+def load_file(filename, cols = None):
   print "start loading file: %s..." % filename 
 
   f = open(filename, 'r')
@@ -24,9 +25,6 @@ def load_file(filename, cols = None, sample_ratio = None):
     if uni_len >= 0 and len(t) != uni_len:
       print "unmatched length found at line: %d" % i
       sys.exit(1)
-
-    if np.randint(0, sample_ratio) != 0:
-        continue
 
     uni_len = len(t)
     if not cols:
@@ -40,8 +38,29 @@ def load_file(filename, cols = None, sample_ratio = None):
   print "Done!"
   return np.array(table)
 
+# load all files from a path, and output 
+# samp_ratio% rows into a single file
 
 
+def sample_files(in_path, out_file, sample_ratio):
+  f = open(out_file, 'w')
+  sample_file(in_path, f, sample_ratio)
+  f.close()
+
+def sample_file(in_path, f_out, sample_ratio):
+  if not os.path.exists(in_path):
+    print '%s doesn\'t exist' % in_path
+    sys.exit(1)
+
+  if os.path.isdir(in_path):
+    for f in os.listdir(in_path):
+      sample_file(in_path + '/' + f, f_out, sample_ratio)
+    return
+
+  fr = open(in_path, 'r')
+  for line in fr:
+    if np.random.randint(sample_ratio) == 0:
+      f_out.write(line)
 
 def discretize_table(table, p):
   dtable = []
@@ -75,10 +94,12 @@ def output_table(table, filename):
   f.close()
 
 def main():
-  table = loadFile(sys.argv[1])
+#  table = loadFile(sys.argv[1])
 #  dtable = discretizeTable(table, float(sys.argv[2]))
 
-  outputTable(dtable, "d_%s_%s" % (sys.argv[2], sys.argv[1]))
+  sample_files(sys.argv[1], sys.argv[2], 10)
+
+#  outputTable(dtable, "d_%s_%s" % (sys.argv[2], sys.argv[1]))
 
 if __name__ == '__main__':
   main()
