@@ -22,7 +22,11 @@ def count_distinct(arr, cols):
       cols.append(val)
   print cols
 
-def clustering(k, arr, cols):
+# main clustering procedure
+# return a list of labels, one for each row
+def clustering(k, data_file, cols):
+  table = prep.load_file(data_file, cols)
+
   weights = [1.0/k] * k
   components = []
   for i in range(k):
@@ -49,8 +53,26 @@ def clustering(k, arr, cols):
   mix_table.randMaxEM(data,1,10,0.1)
   print mix_table
 
-  print mix_table.components[0]
-  return mix_table.classify(data, None, None, 1)
+  return mix_table
+
+def assign_labels(model, data_file, cols):
+  table = prep.load_file(data_file, cols)
+
+  data = mx.Dataset()
+  data.fromArray(np.array(table))
+
+  labels = model.classify(data)
+
+  return labels
+
+def classify_data(model, path, cols):
+  for f in prep.gen_file_list(path):
+    labels = assign_labels(model, f, cols)
+
+    fw = open(f+'.labels', 'w')
+    for x in labels:
+      fw.write(x+'\n')
+    fw.close()
 
 def output(filename, arr):
   f = open(filename, 'w')
@@ -63,40 +85,18 @@ def main():
   cols = [3,7]
   cols = [1,2]
 
- # count_distinct(table, all_cols)
-
   #cols = [schema["dIndustry nominal"], schema["iYearsch nominal"], schema["iMeans nominal"]]
-#  cols = [16, 25, 31, 50, 66]
-#  cols = [86, 101, 104, 114, 118]
   cols = [11, 24, 28, 37, 33, 51, 45, 49, 53, 32, 86, 103, 101, 104, 114, 118, 135]
   cols = [11, 24, 28, 37, 33, 51, 32, 86, 103, 101, 104, 114, 135]
-#  print list(fields[x] for x in cols)
-#  sparse_cols = [45, 50, 43, 3, 12, 31, 2, 16, 25, 66, 53]
-#  num_sparse = len(sparse_cols)
-
-  table = prep.load_file(sys.argv[1], cols)
-  all_cols = range(table.shape[1])
-
-# print schema
-  #print table[:, schema['fixed acidity']]
-  #print table[:, schema['citric acid']]
   
-#  print dv.calc_divergence(table[:,cols])
+#  all_cols = range(table.shape[1])
 
-#  for i in range(num_sparse):
-#    for j in range(num_sparse):
-#      if j == i:
-#        continue
-#      ii = sparse_cols[i]
-#      jj = sparse_cols[j]
-#      print fields[ii], fields[jj]
-#      print dv.calc_divergence(table[:, [ii, jj]])
+  model = clustering(int(sys.argv[2]), sys.argv[1], cols)
+  classify_data(model, path, cols)
 
-  labels = clustering(int(sys.argv[2]), table, all_cols)
-  table = np.hstack((table, np.array(labels)[np.newaxis].T))
-
-  output(sys.argv[3], table)
-  dv.calculate_divergence(table, all_cols)
+#  table = np.hstack((table, np.array(labels)[np.newaxis].T))
+#  output(sys.argv[3], table)
+#  dv.calculate_divergence(table, all_cols)
 
 if __name__ == '__main__':
   main()

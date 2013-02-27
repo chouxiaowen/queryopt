@@ -6,6 +6,18 @@ import numpy as np
 schema = []
 header = ""
 
+def gen_file_list(path):
+  if not os.path.exists(path):
+    print 'path not exist! - \'%s\'' % path
+    sys.exit(1)
+
+  if os.path.isdir(path):
+    for f in os.listdir(path):
+      for x in gen_file_list(path.rstrip('/') + '/' + f):
+        yield x
+  else:
+    yield path
+
 def get_header(filename):  
   f = open(filename, 'r')
   header = f.next().strip()
@@ -96,8 +108,10 @@ def output_table(table, filename):
 def main():
 #  table = loadFile(sys.argv[1])
 #  dtable = discretizeTable(table, float(sys.argv[2]))
+# sample_files(sys.argv[1], sys.argv[2], int(sys.argv[3]))
 
-  sample_files(sys.argv[1], sys.argv[2], int(sys.argv[3]))
+  for f in gen_file_list(sys.argv[1]):
+    print f
 
 #  outputTable(dtable, "d_%s_%s" % (sys.argv[2], sys.argv[1]))
 
