@@ -97,7 +97,7 @@ def main():
 #  table = loadFile(sys.argv[1])
 #  dtable = discretizeTable(table, float(sys.argv[2]))
 
-  sample_files(sys.argv[1], sys.argv[2], 10)
+  sample_files(sys.argv[1], sys.argv[2], int(sys.argv[3]))
 
 #  outputTable(dtable, "d_%s_%s" % (sys.argv[2], sys.argv[1]))
 

@@ -1,13 +1,14 @@
 import sys
 import os
-import get_header
 
 all_values = {}
 
 def meta_count(file_path):
   if os.path.isdir(file_path):
+    if file_path[-1] != '/':
+        file_path += '/'
     for f in os.listdir(file_path):
-      meta_count(f)
+      meta_count(file_path + f)
   else:
     count_values(file_path)
 
@@ -16,10 +17,11 @@ def get_header(filename):
   f = open(filename)
 
   for line in f:
-    header.append(line.lower().split('\t'))
+    header.append(list(x.strip() for x in line.lower().split('\t')))
   return header 
 
 def count_values(filename):
+  print 'computing histograms for file %s' % filename
   f = open(filename)
   num_cols = 0
   for lineid, line in enumerate(f):
@@ -50,6 +52,15 @@ def output_histogram(idx):
   for k, v in all_values[idx].items():
     print k, v
 
+def output_subset(dict_header):
+  varnames = ['sex', 'race1', 'marstat', 'educ', 'enroll', 
+        'citizen', 'lang5', 'pob5', 'yr2us', 'sfrel',
+        'miltary', 'esp', 'esr', 'powst5', 'trvmns', 
+        'lvtime', 'clwkr']
+  for v in varnames: 
+    print v, str(dict_header[v]) + ',',
+    output_distinct_count(dict_header[v])
+  print ''
 def run_stats():
   meta_count(sys.argv[1])
   header = get_header(sys.argv[2])
@@ -58,7 +69,8 @@ def run_stats():
   for idx, field in enumerate(header):
     dict_header[field[0]] = idx
 
-  output_all_distinct_count()
+  print dict_header
+  output_subset(dict_header)
 
 def main():
   run_stats()

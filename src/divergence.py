@@ -1,6 +1,6 @@
 #!/usr/local/homebrew/bin/python2.5
 import sys
-import discretize as disc
+import preprocess as prep
 import numpy as np
 import math
 
@@ -19,6 +19,8 @@ def calc_marginals(vals):
 
   return margins
 
+# calculate the histogram of data
+# return histos, a dictionary of (value, count) pairs. 
 def calc_histogram(data, cols):
   print "Calculating histogram"
   histos = {}
@@ -36,6 +38,8 @@ def calc_histogram(data, cols):
 
   return histos
 
+# calculate histograms for labeled data, the last column being the label
+# invoke calc_histogram() for each label subset.
 def calculate_histogram(data, cols):
   labels = list(set(data[:,-1]))
 
@@ -70,6 +74,7 @@ def calc_pwmi(data, cols, histos):
             cur = (math.log(pxy) - math.log(px) - math.log(py)) / math.log(pxy)
 
           mis.append((cur, -px*py, i, x, j, y))
+          print cur, -px*py, i, x, j, y
   print "Done!"
   print '\n'.join(str(x) for x in sorted(mis))
 
@@ -85,7 +90,6 @@ def calculate_divergence(data, cols):
     tot += subset.shape[0] * div
 
   print "weighted_average: %f" %  (tot * 1.0 / data.shape[0])
-
   print data.shape[0], calc_divergence(data[:,cols])
 
 def calc_divergence(data):
@@ -107,10 +111,19 @@ def calc_divergence(data):
       q = 1.0 # product probability
       for i, x in enumerate(pre):
         q *= marginals[i][x]
-      res += p * (math.log(p) -  math.log(q))
-
+      tmp = p * (math.log(p) - math.log(q))
+      res += tmp
     cnt_pre = 1
     pre = row
+  
+  if pre:
+    p = cnt_pre * 1.0 / n # joint probability
+    q = 1.0 # product probability
+    for i, x in enumerate(pre):
+      q *= marginals[i][x]
+    tmp = p * (math.log(p) - math.log(q))
+    res += tmp
+  
   return res
 
 def calc_all_marginals(data):
@@ -119,21 +132,32 @@ def calc_all_marginals(data):
   for i in range(data.shape[1]):
     all_marginals.append(calc_marginals(data[:,i]))
 
+ # for m in all_marginals:
+ #   print m 
+
   return all_marginals
 #  print all_marginals
 
 def main():
-  [header, data] = disc.load_file(sys.argv[1])
+  data = prep.load_file(sys.argv[1])
   #calc_all_marginals(data)
 
-  cols = [16,25,31,50,66]
+#  cols = [16,25,31,50,66]
+  cols = [11, 24, 28, 37, 33, 51, 45, 49, 53, 32, 86, 103, 101, 104, 114, 118, 135]
 #  cols = [0,2]  
-  calculate_histogram(data, cols)
+#  calculate_histogram(data, cols)
 #  calc_histogram(data, cols)
 
-  #  calculate_divergence(data, [3,7])
+#  calculate_divergence(data, [3,7])
 #  calculate_divergence(data, range(data.shape[1]))
- # calc_divergence(data[:,[0,2]])
+  buf = []
+  for i in cols:
+    for j in cols:
+      if j > i: 
+        buf.append((calc_divergence(data[:,[i,j]]),i,j))
+
+  for x in sorted(buf):
+    print x
 
 if __name__ == '__main__':
   main()
