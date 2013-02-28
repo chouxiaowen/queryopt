@@ -32,6 +32,7 @@ def count_values(filename):
     for i, val in enumerate(row):
       if i not in all_values:
         all_values[i] = {}
+      val = val.strip()
       if val not in all_values[i]:
         all_values[i][val] = 1
       else:
@@ -61,8 +62,7 @@ def output_subset(dict_header):
 def output_domain(out_file):
   f = open(out_file, 'w')
   for idx in all_values:
-    f.write('\t'.join(all_values[idx]))
-    
+    f.write('\t'.join(all_values[idx]) + '\n')
   f.close()
 
 def run_stats():
