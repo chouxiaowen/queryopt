@@ -31,8 +31,8 @@ def clustering(k, data_file, cols):
   components = []
   for i in range(k):
     products = []
-    for j in cols:
-      vals = list(set(arr[:,j]))
+    for j in range(table.shape[1]):
+      vals = list(set(table[:,j]))
       # print vals
       cnt_vals = len(vals)
       dist = mx.DiscreteDistribution(cnt_vals, [1.0/cnt_vals] * cnt_vals, mx.Alphabet(vals))
@@ -44,7 +44,7 @@ def clustering(k, data_file, cols):
   mix_table = mx.MixtureModel(k, weights, components)
 
   data = mx.DataSet()
-  data.fromArray(np.array(arr[:,cols]))
+  data.fromArray(table)
 
   #data.internalInit(mix)
   mix_table.modelInitialization(data)
@@ -58,8 +58,8 @@ def clustering(k, data_file, cols):
 def assign_labels(model, data_file, cols):
   table = prep.load_file(data_file, cols)
 
-  data = mx.Dataset()
-  data.fromArray(np.array(table))
+  data = mx.DataSet()
+  data.fromArray(table)
 
   labels = model.classify(data)
 
@@ -92,7 +92,7 @@ def main():
 #  all_cols = range(table.shape[1])
 
   model = clustering(int(sys.argv[2]), sys.argv[1], cols)
-  classify_data(model, path, cols)
+  classify_data(model, sys.argv[3], cols)
 
 #  table = np.hstack((table, np.array(labels)[np.newaxis].T))
 #  output(sys.argv[3], table)
