@@ -340,7 +340,6 @@ def create_indexes_single_table(header, dbname, table, cols):
   conn = psycopg2.connect("dbname=%s port=11111" % dbname)
   conn.set_isolation_level(0)
   cur = conn.cursor()
-
   
   for col in cols:
     cur.execute("DROP INDEX IF EXISTS %s" % (table + str(col)))

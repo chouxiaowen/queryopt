@@ -1,5 +1,6 @@
 import os
 import preprocess as prep
+import sys
 
 def shuffle_data(in_path, out_path, label_file):
   out_path = out_path.strip('/')
@@ -9,6 +10,9 @@ def shuffle_data(in_path, out_path, label_file):
 
   files = {}
   for f in prep.gen_file_list(in_path):
+    if f[-7:] == '.labels':
+       continue
+
     print 'shuffling file %s' % f
 
     fpath = f[:f.rfind('/')]
@@ -24,7 +28,7 @@ def shuffle_data(in_path, out_path, label_file):
     for line in fd:
       label = fl.next().strip()
       if label not in files:
-        fw = open(out_path + '/' + label)
+        fw = open(out_path + '/' + label, 'w')
         files[label] = fw
 
       files[label].write(line)
@@ -34,3 +38,7 @@ def shuffle_data(in_path, out_path, label_file):
 
 def main():
   shuffle_data(sys.argv[1], sys.argv[2], sys.argv[3])
+
+
+if __name__ == '__main__':
+  main()
