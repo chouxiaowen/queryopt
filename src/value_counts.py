@@ -1,16 +1,12 @@
 import sys
 import os
+import preprocess as prep
 
 all_values = {}
 
 def meta_count(file_path):
-  if os.path.isdir(file_path):
-    if file_path[-1] != '/':
-        file_path += '/'
-    for f in os.listdir(file_path):
-      meta_count(file_path + f)
-  else:
-    count_values(file_path)
+  for f in prep.gen_file_list(file_path):
+    count_values(f)
 
 def get_header(filename):
   header = []
@@ -61,6 +57,14 @@ def output_subset(dict_header):
     print v, str(dict_header[v]) + ',',
     output_distinct_count(dict_header[v])
   print ''
+
+def output_domain(out_file):
+  f = open(out_file, 'w')
+  for idx in all_values:
+    f.write('\t'.join(all_values[idx]))
+    
+  f.close()
+
 def run_stats():
   meta_count(sys.argv[1])
   header = get_header(sys.argv[2])
@@ -69,8 +73,9 @@ def run_stats():
   for idx, field in enumerate(header):
     dict_header[field[0]] = idx
 
-  print dict_header
-  output_subset(dict_header)
+#  print dict_header
+  #output_subset(dict_header)
+  output_domain('domain.txt')
 
 def main():
   run_stats()
