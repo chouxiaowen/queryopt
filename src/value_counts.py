@@ -8,14 +8,6 @@ def meta_count(file_path):
   for f in prep.gen_file_list(file_path):
     count_values(f)
 
-def get_header(filename):
-  header = []
-  f = open(filename)
-
-  for line in f:
-    header.append(list(x.strip() for x in line.lower().split('\t')))
-  return header 
-
 def count_values(filename):
   print 'computing histograms for file %s' % filename
   f = open(filename)
