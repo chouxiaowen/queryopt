@@ -81,20 +81,26 @@ def get_feature_columns(column_file):
   return cols
 
 def get_col_type(col_idx, header):
+  name = header[col_idx][0]
   desc = header[col_idx][1]
+
+  if 'comment' in name:
+    return 'ignore'
   if 'text' in desc or 'char' in desc:
     return 'cat'
-  elif 'integer' in desc or 'decimal' in desc or 'date' in desc:
+  if 'integer' in desc or 'decimal' in desc:
     return 'num'
-  else:
-    print 'unknown column type: %s' % header[col_idx][1]
-    return None
+  if 'date' in desc:
+    return 'num'
+  
+  print 'unknown column type: %s' % header[col_idx][1]
+  return None
 
-def compute_domains(path, header):
+def compute_domains(path, suffix, header):
   all_domains = {}
 
   for f in gen_file_list(path):
-    if not f.endswith('.train'):
+    if not f.endswith(suffix):
       continue
 
     print 'computing domains for %s' % f
@@ -105,17 +111,19 @@ def compute_domains(path, header):
         if i not in all_domains:
           all_domains[i] = {}
          
-        col_type = get_col_type(i, header)
+        col_type = get_col_type(i, header) 
 
         if col_type == 'cat':
-          all_domains[i][cell] = 1 if cell not in all_domains else all_domains[i][cell] + 1
+          all_domains[i][cell] = 1 if cell not in all_domains[i] else all_domains[i][cell] + 1
         elif col_type == 'num':
           val = float(cell)
           if 'min' not in all_domains[i] or val < all_domains[i]['min']:
             all_domains[i]['min'] = val
           if 'max' not in all_domains[i] or val > all_domains[i]['max']:
             all_domains[i]['max'] = val
-        else:
+        elif col_type == 'ignore':
+          continue
+        else: 
           print 'unregonized type %s' % col_type
           sys.exit(1)
 
@@ -128,6 +136,19 @@ def write_domain_file(filename, all_domains):
       fout.write('%s\t%s\t%s\n' % (str(d), str(k), str(v)))
 
   fout.close()
+
+def read_domains(cols, domain_file):
+  domains = {}
+  for c in cols:
+    domains[c] = {}
+  f = open(domain_file, 'r')
+  for line in f:
+    row = line.split('\t')
+    col_id = int(row[0])
+    if col_id in domains:
+      domains[col_id][row[1]] = float(row[2])
+
+  return domains
 
 
 # Load all *.train files from 'in_path', and sample 'samp_ratio' percent 
@@ -183,12 +204,12 @@ def main():
 # sample_files(sys.argv[1], sys.argv[2], int(sys.argv[3]))
   
   for f in gen_file_list(sys.argv[1]):
-    if not f.endswith('.train'):
+    if not f.endswith('.prescale'):
       continue
     path = f.rsplit('/', 1)[0]
     header = get_header(path + '/.header')
-    all_domains = compute_domains(path, header)
-    write_domain_file(path + '/.domains', all_domains)
+    all_domains = compute_domains(path, '.prescale', header)
+    write_domain_file(path + '/.prescale.domains', all_domains)
 
 #  outputTable(dtable, "d_%s_%s" % (sys.argv[2], sys.argv[1]))
 

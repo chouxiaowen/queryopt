@@ -46,17 +46,20 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
       os.makedirs(fout_path)
     
     print 'shuffling file %s into %s' % (f, fout_path)
-    
+
     if not os.path.exists(fpath + '/.header'):
       print 'header file missing: %s' % fpath + '/.header'
       sys.exit(1)
 
     shu.copy(fpath + '/.header', fout_path)
+    shu.copy(fpath + '/.k', fout_path)
+    if os.path.exists(fpath + '/.columns'): 
+      shu.copy(fpath + '/.columns', fout_path)
 
     if k == 1:
       shu.copy(f, fout_path + '/whole')
       continue
-
+  
     if mode == 'learn':
       flabel = '%s/.%s.labels' % (fpath, k)
     
@@ -85,6 +88,9 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
 
 def shuffle_all_tables(in_path, out_path, mode):
   for d in os.listdir(in_path):
+    if d != 'lineitem':
+      continue
+
     if not os.path.isdir(in_path.rstrip('/') + '/' + d):
       continue
     full_in_path = in_path.rstrip('/') + '/' + d
@@ -96,7 +102,8 @@ def main():
 #    print 'Usage: postprocess.py [in_path] [out_path] [mode]'
 #    return 
 #  gen_labels(sys.argv[1], 'keyrange')
-  shuffle_all_tables(sys.argv[1], sys.argv[2], 'keyrange')
+#  shuffle_all_tables(sys.argv[1], sys.argv[2], 'keyrange')
 
+  shuffle_all_tables(sys.argv[1], sys.argv[2], sys.argv[3])
 if __name__ == '__main__':
   main()

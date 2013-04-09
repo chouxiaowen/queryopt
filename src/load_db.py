@@ -31,6 +31,8 @@ def create_all_table(in_path, db_name, part_mode, load_mode):
     if not os.path.isdir(in_path.rstrip('/') + '/' + f):
       continue
 
+    if f != 'lineitem':
+      continue
     full_path = '/'.join([in_path.rstrip('/'), f, part_mode])
     print 'creating tables for %s' % full_path
     create_table(full_path, f, db_name, load_mode)
@@ -82,18 +84,18 @@ def create_table(data_path, table_name, db_name, mode):
   cur.close()
   conn.close()
 
-def create_all_clustered_indexes(in_path, db_name, part_mode, keys):
+def create_all_clustered_index(in_path, db_name, part_mode, keys):
   for f in os.listdir(in_path):
     if not os.path.isdir(in_path.rstrip('/') + '/' + f):
       continue
 
+    if f != 'lineitem':
+      continue
     full_path = '/'.join([in_path.rstrip('/'), f, part_mode])
     print 'creating index for %s' % full_path
     create_clustered_index(full_path, db_name, f, keys)
 
 def create_clustered_index(data_path, db_name, table_name, keys):
-# create master table
-  
   conn = psycopg2.connect("dbname=%s port=11111" % db_name)
   conn.set_isolation_level(0)
   cur = conn.cursor()
@@ -112,6 +114,45 @@ def create_clustered_index(data_path, db_name, table_name, keys):
     cur.execute('CREATE INDEX %s ON %s (%s)' % (idx_name, t_name, col_names))
     print 'clustering index %s' % idx_name
     cur.execute('CLUSTER %s USING %s' % (t_name, idx_name))
+  
+  cur.close()
+
+def create_all_unclustered_index(in_path, db_name, part_mode):
+  for f in os.listdir(in_path):
+    if not os.path.isdir(in_path.rstrip('/') + '/' + f):
+      continue
+
+    if f != 'lineitem':
+      continue
+    
+    full_path = '/'.join([in_path.rstrip('/'), f, part_mode])
+    print 'creating index for %s' % full_path
+    create_unclustered_index(full_path, db_name, f)
+
+def create_unclustered_index(data_path, db_name, table_name):
+  conn = psycopg2.connect("dbname=%s port=11111" % db_name)
+  conn.set_isolation_level(0)
+  cur = conn.cursor()
+
+  for f in prep.gen_file_list(data_path):
+    file_name = f[f.rfind('/')+1:]
+    cur_path = f[:f.rfind('/')]
+    full_path = os.path.abspath(cur_path)
+    t_name = table_name + '_' + file_name
+    print t_name, table_name
+ 
+    k = int(open(cur_path + '/.k').read())
+    if k == 1:
+      continue
+    cols = prep.get_feature_columns(cur_path + '/.columns')
+    header = prep.get_header(cur_path + '/.header') 
+    
+    for col in cols:
+      field_name = header[col][0]
+      idx_name = '%s_%s_%s' % (t_name, str(col), field_name)
+      cur.execute('DROP INDEX IF EXISTS %s' % idx_name)
+      print 'creating (unclustered) index %s' % idx_name
+      cur.execute('CREATE INDEX %s ON %s (%s)' % (idx_name, t_name, field_name))
   
   cur.close()
 
@@ -148,9 +189,11 @@ def main():
   part_mode = sys.argv[3]
   load_mode = sys.argv[4]
  
-  create_all_clustered_indexes(data_path, db_name, part_mode, get_primary_keys())
-#  create_db(db_name)
-#  create_all_table(data_path, db_name, part_mode, load_mode)
+  create_db(db_name)
+  
+  create_all_table(data_path, db_name, part_mode, load_mode)
+ # create_all_clustered_index(data_path, db_name, part_mode, get_primary_keys())
+ # create_all_unclustered_index(data_path, db_name, part_mode)
 
 if __name__ == '__main__':
   main()
