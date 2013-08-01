@@ -9,6 +9,8 @@ import time
 import platform
 import commands
 
+
+QUERY_PATH = '/home/ubuntu/queryopt/data/tpch_2_15_0/tpch_2_15.0/dbgen/'
 ROOT_PATH = "/home/ubuntu/queryopt/" if platform.system() == 'Linux' else "/Users/liwen/work/queryopt/"
 PGDATA_PATH = ROOT_PATH+"pgdata/"
 
@@ -64,6 +66,9 @@ def gen_select_count_queries(clause_file, query_file, table_name):
   fw.close()
   fr.close()
 
+def read_query_file(filename):
+  return open(filename, 'r').read()
+
 def parse_query_file(filename):
   query = ''
   f = open(filename, 'r')
@@ -91,32 +96,94 @@ def parse_query_file(filename):
 
   return query
 
-def run_tpch_query(db_name, query_path, result_file):
+def run_tpch_query(db_name, query_path, stats_file, result_path, k, clearcache=True, restart=True, write=True):
 #  cur.execute("set statement_timeout to '10min';")
   queries = {}
   times = {}
   tup = os.walk(query_path).next()
-  
-  fres = open(result_file, 'w')
+
+  print tup
+  if not os.path.isdir(result_path):
+    os.mkdir(result_path)
+
+  fres = open(stats_file, 'w')
   for f in tup[2]:
+    print f
     f_path = tup[0] + '/' + f
-    query = parse_query_file(f_path) 
-    if f != '14.sql':
-      continue
+#    query = parse_query_file(f_path) 
     
-    if f in ['17.sql', '20.sql', '2.sql', '8.sql', '9.sql']:
+    query = read_query_file(f_path)
+
+    if f in ['17.sql','15.sql', 
+              '13.sql', 
+              '21.sql', 
+              '20.sql', 
+              '2.sql', 
+              '22.sql', 
+              '11.sql',
+              '16.sql',
+              '4.sql']:
+      continue
+
+    forbid = ['17_', '15_', '13_', '21_', '20_', '2_', '22_', '11_', '16_', '4_']
+
+    flag = False
+    for forb in forbid:
+      if f.startswith(forb): 
+        flag = True
+    
+    if flag:
       continue
 
     qid = f.split('.')[0]
     queries[qid] = query
-    if platform.system() == 'Linux' and not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
-      print "failed to clear cache"
-      sys.exit(1)
-    
 
-    if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
-      print "databaes failed to start..."
-      sys.exit(1)
+####### test to skip partitions
+    if restart: 
+      if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
+        print "databaes failed to start..."
+        sys.exit(1)
+    
+    conn = psycopg2.connect("dbname=%s port=11111" % db_name)
+    conn.set_isolation_level(0)
+    cur = conn.cursor()
+   
+
+
+    if k > 0: 
+      parts = []
+    
+      for i in range(int(k)):
+        print 'querying %d' % i
+        part = 'denorm_%d' % i
+        cur.execute(query.replace('denorm', part))
+        res = cur.fetchone()
+        print res
+        if res and res[0]:
+          parts.append(part)
+
+      view_query = 'create view view1 as ' +  ' UNION ALL '.join( 'select * from %s' % part for part in parts) + ';'
+      print view_query
+      cur.execute('drop view if exists view1;')
+      cur.execute(view_query)
+
+      if restart:
+        if not execute_status('pg_ctl stop -m fast -D ' + PGDATA_PATH):
+          print "database failed to stop..."
+          sys.exit(1)
+
+      cur.close()
+#######
+
+    if clearcache:
+      if platform.system() == 'Linux' and not execute_status('sync; echo 3 | sudo tee /proc/sys/vm/drop_caches'):
+        print "failed to clear cache"
+        sys.exit(1)
+
+    if restart:
+      if not execute_status('pg_ctl start -D %s -l pg.log -o "-p 11111"' % PGDATA_PATH):          
+        print "databaes failed to start..."
+        sys.exit(1)
 
     conn = psycopg2.connect("dbname=%s port=11111" % db_name)
     conn.set_isolation_level(0)
@@ -124,37 +191,50 @@ def run_tpch_query(db_name, query_path, result_file):
 
 # create/drop view for q15
 # count timing for them
-
     print 'running query %s' % f
-    if f == '15.sql':
-      c_view = query.split(';')[0] + ';'
-      q_body = query.split(';')[1] + ';'
-      d_view = query.split(';')[2] + ';'
+#    if f == '15.sql':
+#      c_view = query.split(';')[0] + ';'
+#      q_body = query.split(';')[1] + ';'
+#      d_view = query.split(';')[2] + ';'
       
-      start = time.time()
-      cur.execute(c_view)
-      cur.execute(q_body)
-      print cur.fetchone()
-      cur.execute(d_view)
-      t = time.time() - start
+#      start = time.time()
+#      cur.execute(c_view)
+#      cur.execute(q_body)
+#      cur.execute(d_view)
+#      t = time.time() - start
 
+#    else:
+    start = time.time()
+#    cur.execute(query)
+    if k > 0:
+      cur.execute(query.replace('denorm', 'view1'))
     else:
-      start = time.time()
       cur.execute(query)
-      t = time.time() - start
-    
-      print cur.fetchone()
+    t = time.time() - start   
 
-    times[qid] = t
+    if write:
+      fw = open(result_path + f, 'w')
+      for res_tup in cur.fetchall():
+        fw.write('\t'.join(str(x) for x in res_tup) + '\n')
+      fw.close()
+    else:
+      print cur.fetchone()
+    
+    t = t * 1000
+    times[qid] = t 
    
     fres.write('%s\t%s\t%d\n' % (db_name, qid, t))
     print '%s\t%s\t%d' % (db_name, qid, t)
     fres.flush() 
+     
+    if k > 0:
+      cur.execute('drop view view1 if exists;')
+
     conn.close()
-    
-    if not execute_status('pg_ctl stop -m fast -D ' + PGDATA_PATH):
-      print "database failed to stop..."
-      sys.exit(1)
+    if restart:
+      if not execute_status('pg_ctl stop -m fast -D ' + PGDATA_PATH):
+        print "database failed to stop..."
+        sys.exit(1)
 
   fres.close()
 
@@ -195,9 +275,11 @@ def main():
 
   db_name = sys.argv[1]
   query_path = sys.argv[2]
-  result_file = sys.argv[3]
+  stats_file = sys.argv[3]
+  k = int(sys.argv[4])
 
-  run_tpch_query(db_name, query_path, result_file)
+#  run_tpch_query(db_name, QUERY_PATH + query_path, stats_file, query_path.replace('/', '_') + 'res/', True, True, False)
+  run_tpch_query(db_name, QUERY_PATH + query_path, stats_file, query_path.replace('/', '_') + 'res/', k, False, False, True)
 
 if __name__ == '__main__':
   main()

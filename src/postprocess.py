@@ -4,6 +4,8 @@ import preprocess as prep
 import sys
 import random
 import shutil as shu
+import datetime as dt
+
 
 # Generate labels for files in in_path
 def gen_labels(in_path, mode):
@@ -28,7 +30,29 @@ def gen_labels(in_path, mode):
       fr.close()
       fw.close()
 
-def shuffle_data(in_path, out_path, mode = 'learn'):
+# Generate labels for files in in_path
+def gen_labels_shipdate(in_path, k): 
+  mindate = dt.date(1992,1,1).toordinal()
+  maxdate = dt.date(1998,12,31).toordinal()
+  
+  for f in prep.gen_file_list(in_path):
+    if f.endswith('.txt'):
+      path = f[:f.rfind('/')]
+  #   line_count = sum(1 for line in open(f, 'r'))
+  #    part_len = line_count / k
+      fr = open(f, 'r')
+      fw = open('%s/.%d.%s.labels' % (path, k, 'range'), 'w')
+      print fw
+      for i, line in enumerate(fr):
+        date = line.split('\t')[11].split('-')
+        val = dt.date(int(date[0]), int(date[1]), int(date[2])).toordinal()
+        label = (val-mindate) * k / (maxdate-mindate)
+ #       print date, val, label
+        fw.write(str(int(label))+'\n')
+      fr.close()
+      fw.close()
+
+def shuffle_data(in_path, out_path, mode = 'copy'):
   out_path = out_path.strip('/')
 
   if not os.path.exists(out_path):
@@ -40,7 +64,6 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
        continue
 
     fpath = f[:f.rfind('/')]
-    k = int(open(fpath + '/.k', 'r').read())
     fout_path = out_path + '/' + mode 
     if not os.path.exists(fout_path):
       os.makedirs(fout_path)
@@ -52,6 +75,11 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
       sys.exit(1)
 
     shu.copy(fpath + '/.header', fout_path)
+    if mode == 'copy':
+      shu.copy(f, fout_path)
+      continue
+
+    k = int(open(fpath + '/.k', 'r').read())
     shu.copy(fpath + '/.k', fout_path)
     if os.path.exists(fpath + '/.columns'): 
       shu.copy(fpath + '/.columns', fout_path)
@@ -65,6 +93,8 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
     
     else:
       flabel = '%s/.%s.%s.labels' % (fpath, k, mode)
+      print flabel
+      
 
     if not os.path.exists(flabel):
       if mode == 'learn':
@@ -88,9 +118,6 @@ def shuffle_data(in_path, out_path, mode = 'learn'):
 
 def shuffle_all_tables(in_path, out_path, mode):
   for d in os.listdir(in_path):
-    if d != 'lineitem':
-      continue
-
     if not os.path.isdir(in_path.rstrip('/') + '/' + d):
       continue
     full_in_path = in_path.rstrip('/') + '/' + d
@@ -102,8 +129,9 @@ def main():
 #    print 'Usage: postprocess.py [in_path] [out_path] [mode]'
 #    return 
 #  gen_labels(sys.argv[1], 'keyrange')
-#  shuffle_all_tables(sys.argv[1], sys.argv[2], 'keyrange')
-
+  gen_labels_shipdate(sys.argv[1], 5) 
   shuffle_all_tables(sys.argv[1], sys.argv[2], sys.argv[3])
+
+#  shuffle_all_tables(sys.argv[1], sys.argv[2], sys.argv[3])
 if __name__ == '__main__':
   main()

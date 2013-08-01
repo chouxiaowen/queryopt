@@ -61,6 +61,19 @@ def redistribute_header(cur_path='./', des_path='./train/'):
       fw.write('\t'.join([parsed_field[0], ' '.join(parsed_field[1:])]) + '\n')
     fw.close()
 
+def redistribute_header_modified(cur_path, des_path):
+  whole_str = open(cur_path + 'dss.ddl', 'r').read()
+  ls = whole_str.split(';')
+
+  for schema in ls[:-1]:
+    table_name = schema.split('(', 1)[0].strip().split(' ')[2].lower()
+    fw = open(des_path + table_name + '/.header', 'w') 
+    for field in schema.split('(', 1)[1].rsplit(')', 1)[0].split(',\n'):
+      parsed_field  = field.strip().split()
+      print parsed_field
+      fw.write('\t'.join([parsed_field[0], ' '.join(parsed_field[1:])]) + '\n')
+    fw.close()
+
 def convert_row(row, header):
   new_row = []
   for i, cell in enumerate(row):
@@ -72,7 +85,7 @@ def convert_row(row, header):
       date = val.split('-')
       val = dt.date(int(date[0]), int(date[1]), int(date[2])).toordinal()
 
-    # a naive way to scale up 
+# a naive way to scale up 
 #    if 'l_discount' in col_name:
 #      val = float(val) * 1000000
 
@@ -98,7 +111,7 @@ def convert_row(row, header):
   return new_row
 
 def convert_data_file(path):
-  # get date mark
+# get date mark
 #  mindate = dt.date(1992,1,1).toordinal()
 #  maxdate = dt.date(1998,12,31).toordinal()
 #  weight = [10.0, 4.0, 3.0]
@@ -170,8 +183,8 @@ def count(path):
   vc.output_domain('hehe.txt')
 
 def main():
-#  place_data_file('./raw', './train')
-#  redistribute_header() 
+  place_data_file('./raw', './train')
+  redistribute_header() 
 #  convert_data_file('./train/lineitem')
 #  rescale_data_file('./train/lineitem')
 #  sample_train_files('./train/lineitem')
@@ -179,13 +192,9 @@ def main():
 #  vc.meta_count(sys.argv[1])
 #  vc.output_domain(sys.argv[2])
 
-
-  header = prep.get_header('./train/lineitem/.header')
-  all_domains = prep.compute_domains('./train/lineitem', '.train', header)
-  prep.write_domain_file('./train/lineitem/.domains', all_domains)
-
-
-
+#  header = prep.get_header('./train/lineitem/.header')
+#  all_domains = prep.compute_domains('./train/lineitem', '.train', header)
+#  prep.write_domain_file('./train/lineitem/.domains', all_domains)
 
 if __name__ == '__main__':
   main()
